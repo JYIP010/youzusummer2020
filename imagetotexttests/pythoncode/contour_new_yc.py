@@ -34,7 +34,7 @@ gray = cv2.cvtColor(imgBlur, cv2.COLOR_BGR2GRAY)
 
 # threshold the grayscale image
 thresh = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)[1]
-cv2.imshow("thresh", thresh)
+#cv2.imshow("thresh", thresh)
 
 # use morphology erode to blur horizontally
 #kernel = np.ones((500,3), np.uint8)
@@ -44,7 +44,7 @@ kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 17)) #3,17
 morph = cv2.morphologyEx(morph, cv2.MORPH_OPEN, kernel)
 
 resized=cv2.resize(morph,(700,850))
-cv2.imshow("morph",resized)
+#cv2.imshow("morph",resized)
 
 # find contours
 cntrs = cv2.findContours(morph, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
@@ -57,7 +57,7 @@ i=0
 for c in cntrs:
     area = cv2.contourArea(c)/10000
     x,y,w,h = cv2.boundingRect(c)
-    if h < 50 and w > 400 :
+    if h < 150 and w > 400:
         cv2.rectangle(result, (x, y), (x+w, y+h), (0, 0, 255), 2)
         print("Box: " + str(i) + ": (" + str(int(x)) + ", " + str(int(y)) + "," + str(int(w)) + "," + str(int(h)) + ")")
         print('Area: ' + str(area))
