@@ -44,7 +44,7 @@ if not is_white_image(image_name):
     image_name = image_name + "_inverted"
 
 img = cv2.imread("Sample Resources/" + image_name + ".jpg")
-
+height, width, channels = img.shape
 #Blurring
 imgBlur = cv2.GaussianBlur(img, (7, 7), 1)
 # cv2.imshow("blur",imgBlur)
@@ -78,7 +78,8 @@ for c in cntrs:
     area = cv2.contourArea(c)/10000
     x,y,w,h = cv2.boundingRect(c)
     # if h < 50 and w > 400 :
-    if True:
+    #if True:
+    if w / width > 0.15 and h / height < 0.1 and x / width < 0.2:
         cv2.rectangle(result, (x, y), (x+w, y+h), (0, 0, 255), 2)
         # print("Box: " + str(i) + ": (" + str(int(x)) + ", " + str(int(y)) + "," + str(int(w)) + "," + str(int(h)) + ")")
         # print('Area: ' + str(area))
