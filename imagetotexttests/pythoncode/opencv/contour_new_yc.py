@@ -4,7 +4,7 @@ import pytesseract
 from PIL import Image
 
 # load image
-image_name = "pg_2_P6_Science_2019_SA2_CHIJ.jpg"
+image_name = "/pg_2_P6_Science_2019_SA2_CHIJ.jpg"
 img = cv2.imread("Sample Resources/" + image_name)
 
 def get_image(image_path):
@@ -77,7 +77,7 @@ kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 17)) #3,17
 morph = cv2.morphologyEx(morph, cv2.MORPH_OPEN, kernel)
 
 resized=cv2.resize(morph,(700,850))
-cv2.imshow("morph",resized)
+#cv2.imshow("morph",resized)
 
 # find contours
 cntrs = cv2.findContours(morph, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
