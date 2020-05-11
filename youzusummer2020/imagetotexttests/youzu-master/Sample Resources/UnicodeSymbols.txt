@@ -1,0 +1,8 @@
+Symbol - Unicode (hex)
+° - 00B0
+÷ - 00F7
+↑ - 2191
+↓ - 2193
+∠ - U+2220 (from web)
+ℓ - U+2113 (from web)
+Superscript
