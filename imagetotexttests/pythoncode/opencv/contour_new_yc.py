@@ -1,11 +1,7 @@
 import cv2
 import numpy as np
 import pytesseract
-from PIL import Image
-
-# load image
-image_name = "/pg_2_P6_Science_2019_SA2_CHIJ.jpg"
-img = cv2.imread("Sample Resources/" + image_name)
+from PIL import Image, ImageOps
 
 def get_image(image_path):
     """Get a numpy array of an image so that one can access values[x][y]."""
@@ -22,57 +18,50 @@ def get_image(image_path):
     pixel_values = np.array(pixel_values).reshape((width, height, channels))
     return pixel_values
 
-def get_white_percentage(image_name):
-    numpy_array = get_image("Sample Resources/" + image_name)
+def is_white_image(image_name):
+    numpy_array = get_image("Sample Resources/" + image_name + ".jpg")
     total_pixels = numpy_array.size
     num_of_white = np.count_nonzero(numpy_array == [255,255, 255])
     num_of_black = np.count_nonzero(numpy_array == [1,1, 1])
-    return num_of_white / total_pixels
+    white_percentage = num_of_white / total_pixels
+    #Save as inverted image if it is a negative image
+    if white_percentage < 0.75:
+        # load image# Load image 
+        im = Image.open("Sample Resources/" + image_name + ".jpg")
 
-#deskew image
-def deskew(img):
-    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-    gray = cv2.bitwise_not(gray)
-    thresh = cv2.threshold(gray, 0, 255,cv2.THRESH_BINARY | cv2.THRESH_OTSU)[1]
-    coords = np.column_stack(np.where(thresh > 0))
-    angle = cv2.minAreaRect(coords)[-1]
-    if angle < -45:
-        angle = -(90 +angle)
+        # Invert
+        result = ImageOps.invert(im)
+
+        # Save
+        result.save("Sample Resources/" + image_name + "_inverted.jpg")
+        return False
     else:
-        angle = -angle
-    (h, w) = img.shape[:2]
-    center = (w // 2, h // 2)
-    M = cv2.getRotationMatrix2D(center, angle, 1.0)
-    correct = cv2.warpAffine(img, M, (w, h),flags=cv2.INTER_CUBIC, borderMode=cv2.BORDER_REPLICATE)
-    return correct
+        return True
 
-a=deskew(img)
+image_name = "/pg_10_P6_English_2019_CA1_CHIJ"
+
+if not is_white_image(image_name):
+    image_name = image_name + "_inverted"
+
+img = cv2.imread("Sample Resources/" + image_name + ".jpg")
 
 #Blurring
-imgBlur = cv2.GaussianBlur(a, (7, 7), 1)
-#cv2.imshow("blur",imgBlur)
+imgBlur = cv2.GaussianBlur(img, (7, 7), 1)
+# cv2.imshow("blur",imgBlur)
 
 # convert to gray
 gray = cv2.cvtColor(imgBlur, cv2.COLOR_BGR2GRAY)
-#cv2.imshow("gray",gray)
-
-white_percentage = get_white_percentage(image_name)
-if white_percentage > 0.75:
-    # threshold the grayscale image
-    thresh = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)[1]
-    a = thresh
-    # Draw contours
-    result = img.copy()
-else:
-    thresh = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)[1]
-    a = cv2.threshold(thresh, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)[1]
-    # Draw contours
-    result = thresh.copy()
+# cv2.imshow("gray",gray)
+# threshold the grayscale image
+thresh = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)[1]
+# Draw contours
+result = img.copy()
 
 # use morphology erode to blur horizontally
 #kernel = np.ones((500,3), np.uint8)
 kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (200, 3)) #250,3
-morph = cv2.morphologyEx(a, cv2.MORPH_DILATE, kernel)
+morph = cv2.morphologyEx(thresh, cv2.MORPH_DILATE, kernel)
+
 kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 17)) #3,17
 morph = cv2.morphologyEx(morph, cv2.MORPH_OPEN, kernel)
 
@@ -83,18 +72,32 @@ resized=cv2.resize(morph,(700,850))
 cntrs = cv2.findContours(morph, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 cntrs = cntrs[0] if len(cntrs) == 2 else cntrs[1]
 
-
+ordered_value_tuples = []
 i=0
 for c in cntrs:
     area = cv2.contourArea(c)/10000
     x,y,w,h = cv2.boundingRect(c)
-    #if h < 50 and w > 400 :
+    # if h < 50 and w > 400 :
     if True:
         cv2.rectangle(result, (x, y), (x+w, y+h), (0, 0, 255), 2)
-        print("Box: " + str(i) + ": (" + str(int(x)) + ", " + str(int(y)) + "," + str(int(w)) + "," + str(int(h)) + ")")
-        print('Area: ' + str(area))
+        # print("Box: " + str(i) + ": (" + str(int(x)) + ", " + str(int(y)) + "," + str(int(w)) + "," + str(int(h)) + ")")
+        # print('Area: ' + str(area))
         i += 1
-print(i)
+
+        
+        pytesseract.pytesseract.tesseract_cmd = "C:/Program Files/Tesseract-OCR/tesseract.exe"
+
+        image = cv2.imread("Sample Resources/" + image_name + ".jpg", 0)
+        thresh = 255 - cv2.threshold(image, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)[1]
+
+        ROI = thresh[y:y+h,x:x+w]
+        data = pytesseract.image_to_string(ROI, lang='eng',config='--psm 6')
+        
+        ordered_value_tuples.append((data, y))
+        ordered_value_tuples.sort(key = lambda tup: tup[1])
+
+for value in ordered_value_tuples:
+    print(value)
 
 # write result to disk
 #cv2.imwrite("test_text_threshold.png", thresh)

@@ -5,7 +5,7 @@ from pdf2image import convert_from_path
 import os
 import io
 
-pdf_path = "../Sample Resources/P6_English_2019_CA1_CHIJ.pdf"
+pdf_path = "Sample Resources/P6_English_2019_CA1_CHIJ.pdf"
 output_filename = "results.txt"
 pages = convert_from_path(pdf_path)
 pg_cntr = 1
