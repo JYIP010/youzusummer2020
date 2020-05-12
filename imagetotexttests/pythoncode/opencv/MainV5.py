@@ -179,9 +179,6 @@ def is_gibberish(text):
         return False
 
     average_percentage = total_value / len(split)
-    print(text)
-    print(average_percentage)
-    print("--------------")
     if average_percentage > 25:
         #likely to be gibberish
         return True
