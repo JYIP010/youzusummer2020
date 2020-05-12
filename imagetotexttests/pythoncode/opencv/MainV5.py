@@ -1,5 +1,4 @@
 # V5: Current implementation
-
 import cv2
 import numpy as np
 import pytesseract
@@ -247,4 +246,8 @@ for filename in os.listdir("Sample Resources"):
         #generate_document(filename, "OutputDocuments4")
         pass
 
+<<<<<<< HEAD
 generate_document("pg_9_P6_Science_2019_SA2_CHIJ", "OutputDocuments4")
+=======
+generate_document("pg_5_P6_Science_2019_SA2_CHIJ", "OutputDocuments4")
+>>>>>>> 6dd9c2707f66f0171bf7e8c62fc864609d0b6f2b

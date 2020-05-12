@@ -42,7 +42,7 @@ def is_white_image(image_name):
     else:
         return True
 
-image_name = "/pg_6_P6_Science_2019_SA2_CHIJ"
+image_name = "/hey"
 
 if not is_white_image(image_name):
     image_name = image_name + "_inverted"
@@ -79,12 +79,11 @@ cntrs = cntrs[0] if len(cntrs) == 2 else cntrs[1]
 ordered_value_tuples = []
 i=0
 for c in cntrs:
-    area = cv2.contourArea(c)/10000
+    area = cv2.contourArea(c)
     x,y,w,h = cv2.boundingRect(c)
     # if h < 50 and w > 400 :
-    #if True:
-    if w / width > 0.15 and h / height < 0.1 and x / width < 0.2:
-        cv2.rectangle(result, (x, y), (x+w, y+h), (0, 0, 255), 2)
+    if True:
+        cv2.rectangle(result, (x, y), (x+w, y+h), (255, 255, 255), 2)
         # print("Box: " + str(i) + ": (" + str(int(x)) + ", " + str(int(y)) + "," + str(int(w)) + "," + str(int(h)) + ")")
         # print('Area: ' + str(area))
         i += 1
@@ -98,6 +97,7 @@ for c in cntrs:
         ROI = thresh[y:y+h,x:x+w]
         data = pytesseract.image_to_string(ROI, lang='eng',config='--psm 6')
         
+        print(data)
         ordered_value_tuples.append((data, y))
         ordered_value_tuples.sort(key = lambda tup: tup[1])
 
