@@ -67,7 +67,7 @@ def get_thresh_and_contours(img):
     kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 17)) #3,17
     morph = cv2.morphologyEx(morph, cv2.MORPH_OPEN, kernel)
 
-    resized=cv2.resize(morph,(700,850))
+    resized = cv2.resize(morph,(700,850))
     #cv2.imshow("morph",resized)
 
     # find contours
@@ -91,9 +91,11 @@ def merge_contours(thresh, cntrs, x_tolerance, y_tolerance):
         aspect_ratio = max(w, h) / min(w, h)
 
         # Assume zebra line must be long and narrow (long part must be at lease 1.5 times the narrow part).
+        '''
         if (aspect_ratio < 1.5):
             cv2.fillPoly(thresh, pts=[c], color=0)
             continue
+            '''
 
 
     # Use "close" morphological operation to close the gaps between contours
@@ -103,7 +105,7 @@ def merge_contours(thresh, cntrs, x_tolerance, y_tolerance):
     thresh = cv2.morphologyEx(thresh, cv2.MORPH_CLOSE, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (x_tolerance,y_tolerance)));
 
     # Find contours in thresh_gray after closing the gaps
-    cntrs, hier = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
+    _, cntrs, hier = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
     return thresh, cntrs
 
 def draw_contours(result, img, cntrs, image_name):
@@ -127,12 +129,12 @@ def draw_contours(result, img, cntrs, image_name):
             # print("Box: " + str(i) + ": (" + str(int(x)) + ", " + str(int(y)) + "," + str(int(w)) + "," + str(int(h)) + ")")
             # print('Area: ' + str(area))
             i += 1
-            pytesseract.pytesseract.tesseract_cmd = "C:/Program Files/Tesseract-OCR/tesseract.exe"
+            #pytesseract.pytesseract.tesseract_cmd = "C:/Program Files/Tesseract-OCR/tesseract.exe"
 
             image = cv2.imread("Sample Resources/" + image_name + ".jpg", 0)
             thresh = 255 - cv2.threshold(image, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)[1]
 
-            ROI = thresh[y:y+h,x:x+w]
+            ROI = thresh[y:y+h, x:x+w]
             text = pytesseract.image_to_string(ROI, lang='eng',config='--psm 6')
             
             # Only add the image if it is large enough, 
@@ -145,7 +147,7 @@ def draw_contours(result, img, cntrs, image_name):
                     count = count + 1
 
             ordered_value_tuples.append((text, y))
-            ordered_value_tuples.sort(key = lambda tup: tup[1])
+            ordered_value_tuples.sort(key=lambda tup: tup[1])
 
     for value in ordered_value_tuples:
         text = value[0]
@@ -245,4 +247,4 @@ for filename in os.listdir("Sample Resources"):
         #generate_document(filename, "OutputDocuments4")
         pass
 
-generate_document("pg_2_P6_Science_2019_SA2_CHIJ", "OutputDocuments4")
+generate_document("pg_9_P6_Science_2019_SA2_CHIJ", "OutputDocuments4")
