@@ -134,11 +134,11 @@ def draw_contours(result, img, cntrs, image_name):
             thresh = 255 - cv2.threshold(image, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)[1]
 
             ROI = thresh[y:y+h, x:x+w]
-            text = pytesseract.image_to_string(ROI, lang='eng',config='--psm 6')
+            text = pytesseract.image_to_string(ROI, lang='eng', config='--psm 6')
             
             # Only add the image if it is large enough, 
             # and the entire image has illegal text symbols(which is likely to be a diagram)
-            if w > 50 and h > 50:
+            if w > 0.0302 and h > 0.0213:
                 if is_gibberish(text):
                     new_image = img[y:y+h, x:x+w]
                     cv2.imwrite("TempImages/" + str(count) + ".jpg" , new_image)
@@ -246,8 +246,5 @@ for filename in os.listdir("Sample Resources"):
         #generate_document(filename, "OutputDocuments4")
         pass
 
-<<<<<<< HEAD
-generate_document("pg_9_P6_Science_2019_SA2_CHIJ", "OutputDocuments4")
-=======
+generate_document("pg_9_P6_English_2019_CA1_CHIJ", "OutputDocuments4")
 generate_document("pg_5_P6_Science_2019_SA2_CHIJ", "OutputDocuments4")
->>>>>>> 6dd9c2707f66f0171bf7e8c62fc864609d0b6f2b
