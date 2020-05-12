@@ -180,9 +180,6 @@ def is_gibberish(text):
         return False
 
     average_percentage = total_value / len(split)
-    print(text)
-    print(average_percentage)
-    print("--------------")
     if average_percentage > 25:
         #likely to be gibberish
         return True
@@ -249,4 +246,4 @@ for filename in os.listdir("Sample Resources"):
         #generate_document(filename, "OutputDocuments4")
         pass
 
-generate_document("pg_2_P6_Science_2019_SA2_CHIJ", "OutputDocuments4")
+generate_document("pg_5_P6_Science_2019_SA2_CHIJ", "OutputDocuments4")
