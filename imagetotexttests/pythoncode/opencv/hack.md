@@ -66,7 +66,7 @@ def get_thresh_and_contours(img):
     kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 17)) #3,17
     morph = cv2.morphologyEx(morph, cv2.MORPH_OPEN, kernel)
 
-    resized=cv2.resize(morph,(700,850))
+    resized = cv2.resize(morph,(700,850))
     #cv2.imshow("morph",resized)
 
     # find contours
@@ -90,9 +90,11 @@ def merge_contours(thresh, cntrs, x_tolerance, y_tolerance):
         aspect_ratio = max(w, h) / min(w, h)
 
         # Assume zebra line must be long and narrow (long part must be at lease 1.5 times the narrow part).
+        '''
         if (aspect_ratio < 1.5):
             cv2.fillPoly(thresh, pts=[c], color=0)
             continue
+            '''
 
 
     # Use "close" morphological operation to close the gaps between contours
@@ -102,10 +104,13 @@ def merge_contours(thresh, cntrs, x_tolerance, y_tolerance):
     thresh = cv2.morphologyEx(thresh, cv2.MORPH_CLOSE, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (x_tolerance,y_tolerance)));
 
     # Find contours in thresh_gray after closing the gaps
-    cntrs, hier = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
+    _, cntrs, hier = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
     return thresh, cntrs
 
 def draw_contours(result, img, cntrs, image_name):
+    # Contains ordered tuples of (text, y_coord)
+    ordered_value_tuples = []
+
     # Contains list of tuples of (data, type, y_coord)
     # data contains actual string if it is a text, and the image path in TempImages if it contains an image.
     # type is "text" or "image"
@@ -117,34 +122,38 @@ def draw_contours(result, img, cntrs, image_name):
     for c in cntrs:
         area = cv2.contourArea(c)/10000
         x,y,w,h = cv2.boundingRect(c)
-        cv2.rectangle(result, (x, y), (x+w, y+h), (0, 0, 255), 2)
-        i += 1
-        pytesseract.pytesseract.tesseract_cmd = "C:/Program Files/Tesseract-OCR/tesseract.exe"
+        # if h < 50 and w > 400 :
+        if True:
+            cv2.rectangle(result, (x, y), (x+w, y+h), (0, 0, 255), 2)
+            # print("Box: " + str(i) + ": (" + str(int(x)) + ", " + str(int(y)) + "," + str(int(w)) + "," + str(int(h)) + ")")
+            # print('Area: ' + str(area))
+            i += 1
+            #pytesseract.pytesseract.tesseract_cmd = "C:/Program Files/Tesseract-OCR/tesseract.exe"
 
-        image = cv2.imread("Sample Resources/" + image_name + ".jpg", 0)
-        thresh = 255 - cv2.threshold(image, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)[1]
+            image = cv2.imread("Sample Resources/" + image_name + ".jpg", 0)
+            thresh = 255 - cv2.threshold(image, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)[1]
 
-        ROI = thresh[y:y+h,x:x+w]
-        text = pytesseract.image_to_string(ROI, lang='eng',config='--psm 6')
+            ROI = thresh[y:y+h, x:x+w]
+            text = pytesseract.image_to_string(ROI, lang='eng', config='--psm 6')
             
-        # Only add the image if it is large enough, 
-        # and the entire image has illegal text symbols(which is likely to be a diagram)
-        print(text)
-        print(is_gibberish(text))
-        print("----------")
-        if w > 50 and h > 50:
-            if is_gibberish(text):
-                # Likely to be an image
-                new_image = img[y:y+h, x:x+w]
-                cv2.imwrite("TempImages/" + str(count) + ".jpg" , new_image)
-                document_data_list.append(("TempImages/" + str(count) + ".jpg", "image", y))
-                count = count + 1
-            else:
-                # Likely to be a text
-                document_data_list.append((text, "text", y))
-        else:
-            # Likely to be a text
-            document_data_list.append((text, "text", y))
+            # Only add the image if it is large enough, 
+            # and the entire image has illegal text symbols(which is likely to be a diagram)
+            if w > 0.0302 and h > 0.0213:
+                if is_gibberish(text):
+                    new_image = img[y:y+h, x:x+w]
+                    cv2.imwrite("TempImages/" + str(count) + ".jpg" , new_image)
+                    document_data_list.append(("TempImages/" + str(count) + ".jpg", "image", y))
+                    count = count + 1
+
+            ordered_value_tuples.append((text, y))
+            ordered_value_tuples.sort(key=lambda tup: tup[1])
+
+    for value in ordered_value_tuples:
+        text = value[0]
+        y_coord = value[1]
+
+        if not is_gibberish(text):
+            document_data_list.append((text, "text", y_coord))
 
     return document_data_list
 
@@ -237,4 +246,5 @@ for filename in os.listdir("Sample Resources"):
         #generate_document(filename, "OutputDocuments4")
         pass
 
-generate_document("pg_11_P6_English_2019_CA1_CHIJ", "OutputDocuments4")
+generate_document("pg_9_P6_English_2019_CA1_CHIJ", "OutputDocuments4")
+generate_document("pg_5_P6_Science_2019_SA2_CHIJ", "OutputDocuments4")
