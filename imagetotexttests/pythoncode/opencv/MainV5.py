@@ -66,7 +66,7 @@ def get_thresh_and_contours(img):
     kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 17)) #3,17
     morph = cv2.morphologyEx(morph, cv2.MORPH_OPEN, kernel)
 
-    resized=cv2.resize(morph,(700,850))
+    resized = cv2.resize(morph,(700,850))
     #cv2.imshow("morph",resized)
 
     # find contours
@@ -90,9 +90,11 @@ def merge_contours(thresh, cntrs, x_tolerance, y_tolerance):
         aspect_ratio = max(w, h) / min(w, h)
 
         # Assume zebra line must be long and narrow (long part must be at lease 1.5 times the narrow part).
+        '''
         if (aspect_ratio < 1.5):
             cv2.fillPoly(thresh, pts=[c], color=0)
             continue
+            '''
 
 
     # Use "close" morphological operation to close the gaps between contours
@@ -102,7 +104,7 @@ def merge_contours(thresh, cntrs, x_tolerance, y_tolerance):
     thresh = cv2.morphologyEx(thresh, cv2.MORPH_CLOSE, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (x_tolerance,y_tolerance)));
 
     # Find contours in thresh_gray after closing the gaps
-    cntrs, hier = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
+    _, cntrs, hier = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
     return thresh, cntrs
 
 def draw_contours(result, img, cntrs, image_name):
