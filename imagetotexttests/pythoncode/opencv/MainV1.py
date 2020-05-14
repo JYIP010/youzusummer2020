@@ -42,7 +42,7 @@ def is_white_image(image_name):
     else:
         return True
 
-image_name = "/hey"
+image_name = "/table_17"
 
 if not is_white_image(image_name):
     image_name = image_name + "_inverted"
@@ -97,7 +97,6 @@ for c in cntrs:
         ROI = thresh[y:y+h,x:x+w]
         data = pytesseract.image_to_string(ROI, lang='eng',config='--psm 6')
         
-        print(data)
         ordered_value_tuples.append((data, y))
         ordered_value_tuples.sort(key = lambda tup: tup[1])
 

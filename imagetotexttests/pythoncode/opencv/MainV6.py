@@ -1,5 +1,9 @@
-# V6: Implementation of page segmenetation and pipeline
-# Now processes an entire pdf file and output a csv file containing the questions, with image to csv as well
+# V6: Images in pipelines
+#1. Managed to output table as a json object, pretty accurate. Does not work for answer key tables now.
+# 2. Pipeline now supports adding image path in csv. 
+# 3. Improved page segmentation
+# 4. Image Detection for English Papers not perfect, but alot cleaner 
+
 import cv2
 import numpy as np
 import pytesseract
@@ -202,16 +206,15 @@ def write_data_to_document(document_data_list, document, filename):
     global qn_num
     global pg_num
     global global_df
-
+    
     # Sort data of text and images according to their y values, and add them to a word document
     document_data_list.sort(key=lambda tup: tup[2])
     can_add_qn_num = False
-
+    
     for i in range(len(document_data_list)):
         data = document_data_list[i]
-        # data_list=list(data)
-        # data_list.insert(0,qn_num)
-
+        #data_list=list(data)
+        #data_list.insert(0,qn_num)
         item = data[0]
         typeof = data[1]
         y_coord = data[2]
@@ -230,15 +233,20 @@ def write_data_to_document(document_data_list, document, filename):
                 if qn_num not in global_df.index:
                     global_df.loc[qn_num] = [qn_num, pg_num, filename, item, ""]
                 else:
-                    global_df.loc[qn_num] = [qn_num, pg_num, filename, global_df.loc[qn_num][3] + item,
-                                             global_df.loc[qn_num][4]]
+                    global_df.loc[qn_num] = [qn_num, pg_num, filename, global_df.loc[qn_num][3] + item, global_df.loc[qn_num][4]]
 
         elif typeof == "image":
             if qn_num not in global_df.index:
                 global_df.loc[qn_num] = [qn_num, pg_num, filename, "", item]
             else:
-                global_df.loc[qn_num] = [qn_num, pg_num, filename, global_df.loc[qn_num][3],
-                                         global_df.loc[qn_num][4] + ";" + item]
+                global_df.loc[qn_num] = [qn_num, pg_num, filename, global_df.loc[qn_num][3], global_df.loc[qn_num][4] + ";" + item]
+                global_df.loc[qn_num] = [qn_num, pg_num, filename, global_df.loc[qn_num][3] + item, global_df.loc[qn_num][4]]
+            
+        elif typeof == "image":
+            if qn_num not in global_df.index:
+                    global_df.loc[qn_num] = [qn_num, pg_num, filename, "", item]
+            else:
+                global_df.loc[qn_num] = [qn_num, pg_num, filename, global_df.loc[qn_num][3], global_df.loc[qn_num][4] + ";" + item]
             document.add_picture(item, width=Inches(5))
 
         # STEP 2: Check if qn_num should be added in the NEXT contour
@@ -281,7 +289,7 @@ def write_data_to_document(document_data_list, document, filename):
             can_add_qn_num = False
             qn_num = qn_num + 1
         elif i != len(document_data_list) - 1 and can_add_qn_num:
-            next_data = document_data_list[i + 1]
+            next_data = document_data_list[i + 1] 
             if next_data[1] == "text":
                 can_add_qn_num = False
                 qn_num = qn_num + 1

@@ -1,4 +1,8 @@
 import re
-matches = re.match( r'[[({|IL][1-9]*[0-9]?[])}|]', "ewf [1]", re.I)
+mystr = "wdwdsvd]erg"
+matches = re.search(r'[\[\(\|\{]+[1-9]+[o0-9]*[mn]*[\]\)\}\|]+', mystr, re.I)
 
-print(matches)
+if matches:
+    print(True)
+else:
+    print(False)
