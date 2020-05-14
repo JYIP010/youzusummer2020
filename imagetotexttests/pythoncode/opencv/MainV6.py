@@ -1,5 +1,8 @@
-# V5: Partial implementation of page segmenetation and pipeline
-# Now processes an entire pdf file and output a csv file containing the questions
+# V6: Images in pipelines 
+#1. Managed to output table as a json object, pretty accurate. Does not work for answer key tables now.
+# 2. Pipeline now supports adding image path in csv. 
+# 3. Improved page segmentation
+# 4. Image Detection for English Papers not perfect, but alot cleaner 
 
 import cv2
 import numpy as np
@@ -16,6 +19,8 @@ import io
 import re
 import pandas as pd
 import platform
+import math as m
+
 
 def get_image(image_path):
     """Get a numpy array of an image so that one can access values[x][y]."""
@@ -73,7 +78,7 @@ def get_thresh_and_contours(img):
     kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (200, 3))  # 250,3
     morph = cv2.morphologyEx(thresh, cv2.MORPH_DILATE, kernel)
 
-    kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 17))  # 3,17
+    kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (20, 30))  # previously 3,17
     morph = cv2.morphologyEx(morph, cv2.MORPH_OPEN, kernel)
 
     resized = cv2.resize(morph, (700, 850))
@@ -146,13 +151,19 @@ def draw_contours(result, img, cntrs, image_name):
 
         # Only add the image if it is large enough,
         # and the entire image has illegal text symbols(which is likely to be a diagram)
-        if w/width > 0.0302 and h/height > 0.0213 and y/height < 0.95:
-            if is_gibberish(text) and w/h < 5:
-                # Likely to be an image
-                new_image = img[y:y + h, x:x + w]
-                cv2.imwrite("TempImages/" + str(diagram_count) + ".jpg", new_image)
-                document_data_list.append(("TempImages/" + str(diagram_count) + ".jpg", "image", y, pseudo_text))
-                diagram_count = diagram_count + 1
+        #if w/width > 0.0302 and h/height > 0.0213 and y/height < 0.95:
+        if w/width > 0.1 and h/height > 0.003 and y/height < 0.95: #and (x/width < 0.4 or x/width > 0.5)
+            #if is_gibberish(text) and w/h < 5:
+            if is_gibberish(text) or 0.35 < (w*h)/(width*height) < 0.97:
+                if h/height > 0.1 and w/h < 10:
+                    # Likely to be an image
+                    new_image = img[y:y + h, x:x + w]
+                    cv2.imwrite("TempImages/" + str(diagram_count) + ".jpg", new_image)
+                    document_data_list.append(("TempImages/" + str(diagram_count) + ".jpg", "image", y, pseudo_text))
+                    diagram_count = diagram_count + 1
+                else:
+                    # Likely to be text, just small regions like "Go on to the next page"
+                    document_data_list.append((text, "text", y, pseudo_text))
             else:
                 # Likely to be a text
                 document_data_list.append((text, "text", y, pseudo_text))
@@ -184,7 +195,7 @@ def is_gibberish(text):
         return False
 
     average_percentage = total_value / len(split)
-    if average_percentage > 50:
+    if average_percentage > 30:
         # likely to be gibberish
         return True
     else:
@@ -195,13 +206,15 @@ def write_data_to_document(document_data_list, document, filename):
     global qn_num
     global pg_num
     global global_df
+    
     # Sort data of text and images according to their y values, and add them to a word document
     document_data_list.sort(key=lambda tup: tup[2])
+    can_add_qn_num = False
     
     for i in range(len(document_data_list)):
         data = document_data_list[i]
-        data_list=list(data)
-        data_list.insert(0,qn_num)
+        #data_list=list(data)
+        #data_list.insert(0,qn_num)
         
         item = data[0]
         typeof = data[1]
@@ -209,23 +222,34 @@ def write_data_to_document(document_data_list, document, filename):
         pseudo_text = data[3]
         # Eg. ("1.jpg", "image", "45", "@#!$@!$@!$")
         
+        # STEP 1: Add question to dataframe
         if typeof == "text":
             document.add_paragraph(item)
-            # ['qn_num', 'pg_num', 'pdf_name', 'text']
-            if qn_num not in global_df.index:
-                global_df.loc[qn_num] = [qn_num, pg_num, filename, item]
-            else:
-                global_df.loc[qn_num] = [qn_num, pg_num, filename, global_df.loc[qn_num][3] + item]
+            illegal_qn_strings = ["chij", "mark", "instructions", "go on to the next page", "blank page", "question"]
+            # Do not accept text as question if it contains any of these strings
+            contains_illegal_qn_string = any(ele in item.lower() for ele in illegal_qn_strings)
+            if not contains_illegal_qn_string:
+                print((qn_num, item))
+                # ['qn_num', 'pg_num', 'pdf_name', 'text', 'image_path']
+                if qn_num not in global_df.index:
+                    global_df.loc[qn_num] = [qn_num, pg_num, filename, item, ""]
+                else:
+                    global_df.loc[qn_num] = [qn_num, pg_num, filename, global_df.loc[qn_num][3] + item, global_df.loc[qn_num][4]]
             
         elif typeof == "image":
+            if qn_num not in global_df.index:
+                    global_df.loc[qn_num] = [qn_num, pg_num, filename, "", item]
+            else:
+                global_df.loc[qn_num] = [qn_num, pg_num, filename, global_df.loc[qn_num][3], global_df.loc[qn_num][4] + ";" + item]
             document.add_picture(item, width=Inches(5))
 
+        # STEP 2: Check if qn_num should be added in the NEXT contour
         already_added_qn_num = False
         qn_list = ["(1)", "(2)", "(3)", "(4)"]
         # Check if text contains any string found in qn_list
         contains_string = any(ele in pseudo_text for ele in qn_list)
         if contains_string:
-            qn_num = qn_num + 1
+            can_add_qn_num = True
             already_added_qn_num = True
                 
         if "?" in pseudo_text:
@@ -233,7 +257,7 @@ def write_data_to_document(document_data_list, document, filename):
             # Ignore the (1), (2), (3), (4) ans num in the next box
             if i == len(document_data_list) - 1:
                 # no more bounding boxes below in the same page
-                qn_num = qn_num + 1
+                can_add_qn_num = True
                 already_added_qn_num = True
             else:
                 next_data = document_data_list[i + 1] 
@@ -242,15 +266,28 @@ def write_data_to_document(document_data_list, document, filename):
                     #if next data below contains answer options, do not add qn number yet
                     pass
                 else:
-                    qn_num = qn_num + 1
+                    can_add_qn_num = True
                     already_added_qn_num = True
 
         if not already_added_qn_num:
             # Check regex for square brackets. i.e [2m]
-            match_string = re.match(r'[\[\(\|\{il]?[i1-9]*[o0-9]?[mn]?[\]\)\}\|]$|[\[\(\|\{il][i1-9]*[o0-9]?[mn]?[\]\)\}\|]?$', pseudo_text, re.I)
-            if match_string:
-                qn_num = qn_num + 1
+            search_string = re.search(r'[\[\(\|\{]+[1-9]+[o0-9]*[mn]*[\]\)\}\|]+', pseudo_text, re.I)
+            if search_string:
+                can_add_qn_num = True
                 already_added_qn_num = True
+                
+        # STEP 3: Check if the qn_num should be increased in the CURRENT contour
+        # Only allow this if there is no diagram in the NEXT contour
+        if i == len(document_data_list) - 1 and can_add_qn_num:
+            # no more bounding boxes below in the same page
+            can_add_qn_num = False
+            qn_num = qn_num + 1
+        elif i != len(document_data_list) - 1 and can_add_qn_num:
+            next_data = document_data_list[i + 1] 
+            if next_data[1] == "text":
+                can_add_qn_num = False
+                qn_num = qn_num + 1
+                
     pg_num = pg_num + 1
         
 
@@ -265,12 +302,13 @@ def generate_document(filename, documentdir):
 
     ###### Step 2: Get the initial thresh and contours
     img = cv2.imread(image_name + ".jpg")
+    height, width, channels = img.shape
     thresh, cntrs, result, morph = get_thresh_and_contours(img)
 
     ###### Step 3: Merge contours that are close together
     # Modify the x and y tolerance to change how far it must be before it will merge!
-    x_tolerance = 300
-    y_tolerance = 35
+    x_tolerance = m.floor(0.18138*width) # previously 300px
+    y_tolerance = m.floor(0.014964*height) # previously 35px
     thresh, cntrs = merge_contours(thresh, cntrs, x_tolerance, y_tolerance)
 
     ###### Step 4: Draw the contours on the image
@@ -329,7 +367,7 @@ for page in pages:
 qn_num = 1
 pg_num = 1
 diagram_count = 1
-global_df = pd.DataFrame(columns=['qn_num', 'pg_num', 'pdf_name', 'text'])
+global_df = pd.DataFrame(columns=['qn_num', 'pg_num', 'pdf_name', 'text', "img_path"])
 
 for file in filenames_list:
     generate_document(file, "OutputDocuments4")
