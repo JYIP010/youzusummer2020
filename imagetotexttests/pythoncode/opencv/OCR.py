@@ -18,8 +18,4 @@ for page in pages:
     filename = "pg_"+str(pg_cntr)+'_'+pdf_path.split('/')[-1].replace('.pdf','.jpg')
     page.save(sub_dir+filename)
 
-    with io.open(output_filename, 'a+', encoding='utf8') as f:
-        f.write(str("======================================================== PAGE " + str(pg_cntr) + " ========================================================\n"))
-        f.write(str(pytesseract.image_to_string(sub_dir+filename)+"\n"))
-        f.write(str("======================================================== ========================= ========================================================\n"))
     pg_cntr = pg_cntr + 1

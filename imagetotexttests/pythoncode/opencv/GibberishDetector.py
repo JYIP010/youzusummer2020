@@ -70,6 +70,5 @@ def classify(text):
     vp_dev = max(deviation_score(vp, 35, 45), 1)
     wtcr_dev = max(deviation_score(wtcr, 15, 20), 1)
 
-    return max((math.log10(ucpcp_dev) + math.log10(vp_dev) +
-                math.log10(wtcr_dev)) / 6 * 100, 1)
+    return max((math.log10(ucpcp_dev) + math.log10(vp_dev) + math.log10(wtcr_dev)) / 6 * 100, 1)
 
