@@ -139,8 +139,9 @@ class detectTable(object):
             text = pytesseract.image_to_string(ROI, lang='eng',config='--psm 6')
             cv2.imwrite("TempImages/" + "table_" + str(count) + ".jpg" , ROI)
             cell_value = get_text("table_" + str(count))
-            
-            if cell_value != "": 
+            print(cell_value)
+            if True:
+            #if cell_value != "": 
                 if count != 0:
                     ordered_value_tuples.append((cell_value, x, y))
                     ordered_value_tuples.sort(key = lambda tup: tup[2])
@@ -225,7 +226,6 @@ def get_text(image_name):
 
         ROI = thresh[y:y+h,x:x+w]
         data = pytesseract.image_to_string(ROI, lang='eng',config='--psm 6')
-            
         ordered_value_tuples.append((data, y))
         ordered_value_tuples.sort(key = lambda tup: tup[1])
         i = i + 1
@@ -274,7 +274,7 @@ def sort_table(ordered_value_tuples):
 
 
 if __name__=='__main__':
-    img = cv2.imread('3.jpg')
+    img = cv2.imread('1.jpg')
     cv2.imshow("img",img)
     mask,joint = detectTable(img).run()
     cv2.waitKey()
