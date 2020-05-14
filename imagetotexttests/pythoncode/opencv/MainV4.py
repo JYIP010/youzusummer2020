@@ -9,7 +9,9 @@ from langdetect import detect
 from docx import Document
 from docx.shared import Inches
 from GibberishDetector import classify
-import os 
+import os
+import math as m
+
 
 def get_image(image_path):
     """Get a numpy array of an image so that one can access values[x][y]."""
@@ -29,8 +31,8 @@ def get_image(image_path):
 def is_white_image(image_name):
     numpy_array = get_image("Sample Resources/" + image_name + ".jpg")
     total_pixels = numpy_array.size
-    num_of_white = np.count_nonzero(numpy_array == [255,255, 255])
-    num_of_black = np.count_nonzero(numpy_array == [1,1, 1])
+    num_of_white = np.count_nonzero(numpy_array == [255, 255, 255])
+    num_of_black = np.count_nonzero(numpy_array == [1, 1, 1])
     white_percentage = num_of_white / total_pixels
     #Save as inverted image if it is a negative image
     if white_percentage < 0.75:
@@ -65,7 +67,7 @@ def get_thresh_and_contours(img):
     kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (200, 3)) #250,3
     morph = cv2.morphologyEx(thresh, cv2.MORPH_DILATE, kernel)
 
-    kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 17)) #3,17
+    kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (20, 30)) #3,17
     morph = cv2.morphologyEx(morph, cv2.MORPH_OPEN, kernel)
 
     resized=cv2.resize(morph,(700,850))
@@ -104,13 +106,14 @@ def merge_contours(thresh, cntrs, x_tolerance, y_tolerance):
     thresh = cv2.morphologyEx(thresh, cv2.MORPH_CLOSE, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (x_tolerance,y_tolerance)));
 
     # Find contours in thresh_gray after closing the gaps
-    cntrs, hier = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
+    _, cntrs, hier = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
     return thresh, cntrs
 
 def draw_contours(result, img, cntrs, image_name):
     # Contains ordered tuples of (text, y_coord)
     ordered_value_tuples = []
-
+    height, width, channels = img.shape
+    #print("width: " + str(width) + ", height: " + str(height))
     # Contains list of tuples of (data, type, y_coord)
     # data contains actual string if it is a text, and the image path in TempImages if it contains an image.
     # type is "text" or "image"
@@ -122,13 +125,12 @@ def draw_contours(result, img, cntrs, image_name):
     for c in cntrs:
         area = cv2.contourArea(c)/10000
         x,y,w,h = cv2.boundingRect(c)
-        # if h < 50 and w > 400 :
-        if True:
+        if w/width > 0.1 and h/height > 0.003 and y/height < 0.95: #and (x/width < 0.4 or x/width > 0.5)
             cv2.rectangle(result, (x, y), (x+w, y+h), (0, 0, 255), 2)
             # print("Box: " + str(i) + ": (" + str(int(x)) + ", " + str(int(y)) + "," + str(int(w)) + "," + str(int(h)) + ")")
             # print('Area: ' + str(area))
             i += 1
-            pytesseract.pytesseract.tesseract_cmd = "C:/Program Files/Tesseract-OCR/tesseract.exe"
+            #pytesseract.pytesseract.tesseract_cmd = "C:/Program Files/Tesseract-OCR/tesseract.exe"
 
             image = cv2.imread("Sample Resources/" + image_name + ".jpg", 0)
             thresh = 255 - cv2.threshold(image, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)[1]
@@ -138,12 +140,11 @@ def draw_contours(result, img, cntrs, image_name):
             
             # Only add the image if it is large enough, 
             # and the entire image has illegal text symbols(which is likely to be a diagram)
-            if w > 50 and h > 50:
-                if is_gibberish(text):
-                    new_image = img[y:y+h, x:x+w]
-                    cv2.imwrite("TempImages/" + str(count) + ".jpg" , new_image)
-                    document_data_list.append(("TempImages/" + str(count) + ".jpg", "image", y))
-                    count = count + 1
+            if is_gibberish(text):
+                new_image = img[y:y+h, x:x+w]
+                cv2.imwrite("TempImages/" + str(count) + ".jpg" , new_image)
+                document_data_list.append(("TempImages/" + str(count) + ".jpg", "image", y))
+                count = count + 1
 
             ordered_value_tuples.append((text, y))
             ordered_value_tuples.sort(key = lambda tup: tup[1])
@@ -162,6 +163,7 @@ def is_gibberish(text):
     split = text.split("\n")
     
     total_value = 0
+    print(len(split))
     if len(split) == 0:
         return False
 
@@ -180,15 +182,21 @@ def is_gibberish(text):
         return False
 
     average_percentage = total_value / len(split)
-    if average_percentage > 25:
+    if average_percentage > 50:
         #likely to be gibberish
+        print("Gibberish: " + text)
         return True
     else:
+        print("Not Gibberish" + text)
         return False
 
 def write_data_to_document(document_data_list, document):
     # Sort data of text and images according to their y values, and add them to a word document
     document_data_list.sort(key = lambda tup: tup[2])
+
+    for data in document_data_list:
+        print(data[0])
+    '''
     for data in document_data_list:
         item = data[0]
         typeof = data[1]
@@ -197,6 +205,7 @@ def write_data_to_document(document_data_list, document):
             document.add_paragraph(item)
         elif typeof == "image":
             document.add_picture(item, width=Inches(5))
+    '''
 
 def generate_document(filename, documentdir):
     image_name = filename.replace(".jpg", "")
@@ -208,12 +217,14 @@ def generate_document(filename, documentdir):
 
     ###### Step 2: Get the initial thresh and contours
     img = cv2.imread("Sample Resources/" + image_name + ".jpg")
+    height, width, channels = img.shape
+    #print("height: " + str(height) + ", width: " + str(width))
     thresh, cntrs, result, morph = get_thresh_and_contours(img)
-    
-    ###### Step 3: Merge contours that are close together 
+
+    ###### Step 3: Merge contours that are close together
     # Modify the x and y tolerance to change how far it must be before it will merge!
-    x_tolerance = 300
-    y_tolerance = 35
+    x_tolerance = m.floor(0.18138 * width)
+    y_tolerance = m.floor(0.014964 * height)
     thresh, cntrs = merge_contours(thresh, cntrs, x_tolerance, y_tolerance)
 
     
@@ -228,10 +239,11 @@ def generate_document(filename, documentdir):
 
     ###### Step 5: Write and Save to a new Microsoft Word Document 
     write_data_to_document(document_data_list, document)
-    document.save(documentdir + "/" + image_name + ".docx")
+    #document.save(documentdir + "/" + image_name + ".docx")
 
     # cv2.imshow("THRESH", thresh)
-    # cv2.imshow("MORPH", morph)
+    morphS = cv2.resize(morph, (600, 750))
+    cv2.imshow("MORPH", morphS)
 
     ###### Step 6: Display results 
     ims=cv2.resize(result,(700,850))
@@ -246,4 +258,4 @@ for filename in os.listdir("Sample Resources"):
         #generate_document(filename, "OutputDocuments4")
         pass
 
-generate_document("pg_5_P6_Science_2019_SA2_CHIJ", "OutputDocuments4")
+generate_document("pg_15_P6_English_2019_CA1_CHIJ", "OutputDocuments4")

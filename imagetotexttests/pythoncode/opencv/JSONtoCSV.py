@@ -1,3 +1,5 @@
+# Not used since we are using pandas to sort out the questions
+
 import pandas as pd
 import json
 import os.path

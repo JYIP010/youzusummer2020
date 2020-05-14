@@ -1,4 +1,4 @@
-# V5: Current implementation
+# V6: Current implementation
 import cv2
 import numpy as np
 import pytesseract
@@ -14,6 +14,7 @@ import io
 import re
 import pandas as pd
 import platform
+import math as m
 
 
 def get_image(image_path):
@@ -69,10 +70,10 @@ def get_thresh_and_contours(img):
 
     # use morphology erode to blur horizontally
     # kernel = np.ones((500,3), np.uint8)
-    kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (200, 3))  # 250,3
+    kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (200, 3))  # previously 200,3
     morph = cv2.morphologyEx(thresh, cv2.MORPH_DILATE, kernel)
 
-    kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 17))  # 3,17
+    kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (20, 30))  # previously 3, 17
     morph = cv2.morphologyEx(morph, cv2.MORPH_OPEN, kernel)
 
     resized = cv2.resize(morph, (700, 850))
@@ -98,7 +99,7 @@ def merge_contours(thresh, cntrs, x_tolerance, y_tolerance):
         rect = cv2.minAreaRect(c)
         (x, y), (w, h), angle = rect
         # aspect_ratio = max(w, h) / min(w, h)
-
+        #aspect_ratio = max(w, h) / min(w, h)
         # Assume zebra line must be long and narrow (long part must be at lease 1.5 times the narrow part).
         '''
         if (aspect_ratio < 1.5):
@@ -134,6 +135,7 @@ def draw_contours(result, img, cntrs, image_name):
         if platform.system() == "Windows":
             pytesseract.pytesseract.tesseract_cmd = "C:/Program Files/Tesseract-OCR/tesseract.exe"
 
+
         # Read as binary image
         image = cv2.imread(image_name + ".jpg", 0)
 
@@ -145,15 +147,20 @@ def draw_contours(result, img, cntrs, image_name):
 
         # Only add the image if it is large enough,
         # and the entire image has illegal text symbols(which is likely to be a diagram)
-        if w / width > 0.0302 and h / height > 0.0213 and y / height < 0.95:
-            if is_gibberish(text) and w / h < 5:
-                # Likely to be an image
-                new_image = img[y:y + h, x:x + w]
-                cv2.imwrite("TempImages/" + str(diagram_count) + ".jpg", new_image)
-                document_data_list.append(("TempImages/" + str(diagram_count) + ".jpg", "image", y, pseudo_text))
-                diagram_count = diagram_count + 1
+        #if w/width > 0.0302 and h/height > 0.0213 and y/height < 0.95:
+        if w/width > 0.1 and h/height > 0.003 and y/height < 0.95: # and (x/width < 0.4 or x/width > 0.5)
+            if is_gibberish(text) or 0.35 < (w*h)/(width*height) < 0.97:
+                if h/height > 0.1 and w/h < 10:
+                    # Likely to be a relevant image
+                    new_image = img[y:y + h, x:x + w]
+                    cv2.imwrite("TempImages/" + str(diagram_count) + ".jpg", new_image)
+                    document_data_list.append(("TempImages/" + str(diagram_count) + ".jpg", "image", y, pseudo_text))
+                    diagram_count = diagram_count + 1
+                else:
+                    # Likely to be text, just small regions like "Go on to the next page"
+                    document_data_list.append((text, "text", y, pseudo_text))
             else:
-                # Likely to be a text
+                # Likely to be text
                 document_data_list.append((text, "text", y, pseudo_text))
 
     return document_data_list
@@ -183,7 +190,7 @@ def is_gibberish(text):
         return False
 
     average_percentage = total_value / len(split)
-    if average_percentage > 50:
+    if average_percentage > 30:
         # likely to be gibberish
         return True
     else:
@@ -197,11 +204,12 @@ def write_data_to_document(document_data_list, document, filename):
     # Sort data of text and images according to their y values, and add them to a word document
     document_data_list.sort(key=lambda tup: tup[2])
 
+
     for i in range(len(document_data_list)):
         data = document_data_list[i]
-        data_list = list(data)
-        data_list.insert(0, qn_num)
-
+        data_list=list(data)
+        data_list.insert(0,qn_num)
+        
         item = data[0]
         typeof = data[1]
         y_coord = data[2]
@@ -211,6 +219,10 @@ def write_data_to_document(document_data_list, document, filename):
         if typeof == "text":
             document.add_paragraph(item)
             # ['qn_num', 'pg_num', 'pdf_name', 'text']
+            illegal_qn_strings = ["chij", "mark", "instructions", "go on to the next page", "blank page", "question"]
+            contains_illegal_qn_string = any(ele in item.lower() for ele in illegal_qn_strings)
+            if not contains_illegal_qn_string:
+                print((qn_num, item))
             if qn_num not in global_df.index:
                 global_df.loc[qn_num] = [qn_num, pg_num, filename, item]
             else:
@@ -230,7 +242,6 @@ def write_data_to_document(document_data_list, document, filename):
         if "?" in pseudo_text:
             # If there is a ? symbol in the current box,
             # Ignore the (1), (2), (3), (4) ans num in the next box
-            ignore_ans_num = True
             if i == len(document_data_list) - 1:
                 # no more bounding boxes below in the same page
                 qn_num = qn_num + 1
@@ -247,10 +258,8 @@ def write_data_to_document(document_data_list, document, filename):
 
         if not already_added_qn_num:
             # Check regex for square brackets. i.e [2m]
-            match_string = re.match(
-                r'[\[\(\|\{il]?[i1-9]*[o0-9]?[mn]?[\]\)\}\|]$|[\[\(\|\{il][i1-9]*[o0-9]?[mn]?[\]\)\}\|]?$', pseudo_text,
-                re.I)
-            if match_string:
+            search_string = re.search(r'[\[\(\|\{]+[1-9]+[o0-9]*[mn]*[\]\)\}\|]+', pseudo_text, re.I)
+            if search_string:
                 qn_num = qn_num + 1
                 already_added_qn_num = True
     pg_num = pg_num + 1
@@ -266,12 +275,13 @@ def generate_document(filename, documentdir):
 
     ###### Step 2: Get the initial thresh and contours
     img = cv2.imread(image_name + ".jpg")
+    height, width, channels = img.shape
     thresh, cntrs, result, morph = get_thresh_and_contours(img)
 
     ###### Step 3: Merge contours that are close together
     # Modify the x and y tolerance to change how far it must be before it will merge!
-    x_tolerance = 300
-    y_tolerance = 35
+    x_tolerance = m.floor(0.18138 * width)  # 300
+    y_tolerance = m.floor(0.014964 * height)  # 35
     thresh, cntrs = merge_contours(thresh, cntrs, x_tolerance, y_tolerance)
 
     ###### Step 4: Draw the contours on the image
