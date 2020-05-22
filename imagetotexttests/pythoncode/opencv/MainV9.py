@@ -439,11 +439,11 @@ diagram_count = 1
 total_pages = -1
 global_df = pd.DataFrame(columns=['qn_num', 'pg_num', 'pdf_name', 'text', "img_path"])
 
-if not os.path.exists("/TempImages"):
-    os.makedirs("/TempImages")
+if not os.path.exists("TempImages"):
+    os.makedirs("TempImages")
 
-if not os.path.exists("/TempContours"):
-    os.makedirs("/TempContours")
+if not os.path.exists("TempContours"):
+    os.makedirs("TempContours")
 
 for filename in os.listdir("Sample Resources"):
     if filename.endswith(".pdf"): 
