@@ -1,4 +1,7 @@
-# V9: Current implementation
+# V9: 1. Add new features in csv output file, such as subject, school name, paper type
+# 2. Fixed a bug previously which caused issues with multiple processing of PDF files
+# 3. Added Accuracy Tracking for qn numbers and image output
+# 4. Added new feature to detect and print blank lines.
 import cv2
 import numpy as np
 import pytesseract
