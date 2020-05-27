@@ -2,6 +2,7 @@
 # 2. Fixed a bug previously which caused issues with multiple processing of PDF files
 # 3. Added Accuracy Tracking for qn numbers and image output
 # 4. Added new feature to detect and print blank lines.
+# V9: Current implementation - Working on Math Papers
 import cv2
 import numpy as np
 import pytesseract
@@ -25,7 +26,7 @@ import shutil
 def get_image(image_path):
     """Get a numpy array of an image so that one can access values[x][y]."""
     image = Image.open(image_path, 'r')
-    image = image.convert('L') #makes it greyscale
+    image = image.convert('L')  # makes it greyscale
     width, height = image.size
     pixel_values = list(image.getdata())
     if image.mode == 'RGB':
@@ -87,7 +88,10 @@ def get_thresh_and_contours(img):
     kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (200, 3))  # 250,3
     morph = cv2.morphologyEx(thresh, cv2.MORPH_DILATE, kernel)
 
-    kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 17))  # previously 20,30 for eng papers
+    if re.search(r'english', filename, re.I):
+        kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (20, 30))  # previously 20,30 for eng papers
+    else:
+        kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 17))  # previously 20,30 for eng papers
     morph = cv2.morphologyEx(morph, cv2.MORPH_OPEN, kernel)
 
     resized = cv2.resize(morph, (700, 850))
@@ -112,7 +116,7 @@ def merge_contours(thresh, cntrs, x_tolerance, y_tolerance):
         # https://stackoverflow.com/questions/52247821/find-width-and-height-of-rotatedrect
         rect = cv2.minAreaRect(c)
         (x, y), (w, h), angle = rect
-        #aspect_ratio = max(w, h) / min(w, h)
+        # aspect_ratio = max(w, h) / min(w, h)
 
         # Assume zebra line must be long and narrow (long part must be at lease 1.5 times the narrow part).
         '''
@@ -134,46 +138,100 @@ def merge_contours(thresh, cntrs, x_tolerance, y_tolerance):
 
 def draw_contours(result, img, cntrs, image_name):
     global diagram_count
+    global texted
     # Contains list of tuples of (data, type, y_coord)
     # data contains actual string if it is a text, and the image path in TempImages if it contains an image.
     # type is "text" or "image"
     # y_coord contains y coordinates of the text or image
     document_data_list = []
     height, width, channels = img.shape
-    i = 0
-    for c in cntrs:
-        area = cv2.contourArea(c) / 10000
-        x, y, w, h = cv2.boundingRect(c)
-        cv2.rectangle(result, (x, y), (x + w, y + h), (0, 0, 255), 2)
-        i += 1
-        if platform.system() == "Windows":
-            pytesseract.pytesseract.tesseract_cmd = "C:/Program Files/Tesseract-OCR/tesseract.exe"
-        
-        # Read as binary image
-        image = cv2.imread(image_name + ".jpg", 0)
 
-        thresh = 255 - cv2.threshold(image, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)[1]
+    if re.search(r'english', filename, re.I):
+        result_1 = img.copy()
+        # image preprocessing and find contours for blank line detection
+        gray_1 = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+        thresh_1 = cv2.threshold(gray_1, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)[1]
 
-        ROI = thresh[y:y + h, x:x + w]
-        text = pytesseract.image_to_string(ROI, lang='eng', config='--psm 6')
-        pseudo_text = text
+        horizontal_kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (15, 1))
+        detected_lines = cv2.morphologyEx(thresh_1, cv2.MORPH_OPEN, horizontal_kernel, iterations=2)
 
-        # Only add the image if it is large enough,
-        # and the entire image has illegal text symbols(which is likely to be a diagram)
-        #if w/width > 0.0302 and h/height > 0.0213 and y/height < 0.95:
-        if w / width > 0.1 and h / height > 0.001 and y / height < 0.95 and w / h < 25:  # and (x/width < 0.4 or x/width > 0.5)
-            # if is_gibberish(text) and w/h < 5:
-            ############## trying out hough transform as a filter!!! ###############
-            new_image = img[y:y + h, x:x + w]
-            dst = cv2.Canny(new_image, 50, 200, None, 3)
-            linesp = cv2.HoughLinesP(dst, 1, np.pi / 180, 50, None, 50, 2)
-            if linesp is not None or is_gibberish(text):
-                cv2.imwrite("TempImages/" + str(diagram_count) + ".jpg", new_image)
-                document_data_list.append(("TempImages/" + str(diagram_count) + ".jpg", "image", y, pseudo_text))
-                diagram_count = diagram_count + 1
-            else:
-                # large chunk that resembles diagram, but really is text
-                document_data_list.append((text, "text", y, pseudo_text))
+        cnts_line = cv2.findContours(detected_lines, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        cnts_line = cnts_line[0] if len(cnts_line) == 2 else cnts[1]
+        # draw contours for blank line
+        for c in cnts_line:
+            # cv2.drawContours(image, [c], -1, (0,0,255), 3)
+            x1, y1, w1, h1 = cv2.boundingRect(c)
+            if 0.05 < w1 / width < 0.35:
+                cv2.rectangle(result, (x1, y1), (x1 + w1, y1 + h1), (255, 0, 0), 2)
+                texted = cv2.putText(result_1, '(EMPTY)', (x1, y1), cv2.FONT_HERSHEY_SIMPLEX,
+                                     0.8, (0, 0, 0), 2, cv2.LINE_AA)
+                texted = cv2.dilate(texted, np.ones((2, 2), np.uint8), iterations=1)
+        for c in cntrs:
+            area = cv2.contourArea(c) / 10000
+            x, y, w, h = cv2.boundingRect(c)
+            cv2.rectangle(result, (x, y), (x + w, y + h), (0, 0, 255), 2)
+            grayish = cv2.cvtColor(texted, cv2.COLOR_BGR2GRAY)
+            # image = cv2.imread(img_file, 0)
+            thresh = 255 - cv2.threshold(grayish, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)[1]
+            ###cropping out image and convert to text
+            ROI = thresh[y:y + h, x:x + w]
+            text = pytesseract.image_to_string(ROI, lang='eng', config='--psm 6')
+            text = re.sub(r"\(EMPTY\)", "_________", text)
+            pseudo_text = text
+
+            # Only add the image if it is large enough,
+            # and the entire image has illegal text symbols(which is likely to be a diagram)
+            # if w/width > 0.0302 and h/height > 0.0213 and y/height < 0.95:
+            if w / width > 0.1 and h / height > 0.001 and y / height < 0.95:  # and (x/width < 0.4 or x/width > 0.5)
+                # if is_gibberish(text) and w/h < 5:
+                if is_gibberish(text) or 0.35 < (w * h) / (width * height) < 0.97:
+                    if h / height > 0.1 and w / h < 10:
+                        # Likely to be an image
+                        new_image = img[y:y + h, x:x + w]
+                        cv2.imwrite("TempImages/" + str(diagram_count) + ".jpg", new_image)
+                        document_data_list.append(
+                            ("TempImages/" + str(diagram_count) + ".jpg", "image", y, pseudo_text))
+                        diagram_count = diagram_count + 1
+                    else:
+                        # Likely to be text, just small regions like "Go on to the next page"
+                        document_data_list.append((text, "text", y, pseudo_text))
+                else:
+                    # Likely to be a text
+                    document_data_list.append((text, "text", y, pseudo_text))
+    #for non english papers, no blank line detection required
+    else:
+        for c in cntrs:
+            area = cv2.contourArea(c) / 10000
+            x, y, w, h = cv2.boundingRect(c)
+            cv2.rectangle(result, (x, y), (x + w, y + h), (0, 0, 255), 2)
+            if platform.system() == "Windows":
+                pytesseract.pytesseract.tesseract_cmd = "C:/Program Files/Tesseract-OCR/tesseract.exe"
+
+            # Read as binary image
+            image = cv2.imread(image_name + ".jpg", 0)
+
+            thresh = 255 - cv2.threshold(image, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)[1]
+
+            ROI = thresh[y:y + h, x:x + w]
+            text = pytesseract.image_to_string(ROI, lang='eng', config='--psm 6')
+            pseudo_text = text
+
+            # Only add the image if it is large enough,
+            # and the entire image has illegal text symbols(which is likely to be a diagram)
+            # if w/width > 0.0302 and h/height > 0.0213 and y/height < 0.95:
+            if w / width > 0.1 and h / height > 0.001 and y / height < 0.95 and w / h < 25:  # and (x/width < 0.4 or x/width > 0.5)
+                # if is_gibberish(text) and w/h < 5:
+                ############## trying out hough transform as a filter!!! ###############
+                new_image = img[y:y + h, x:x + w]
+                dst = cv2.Canny(new_image, 50, 200, None, 3)
+                linesp = cv2.HoughLinesP(dst, 1, np.pi / 180, 50, None, 50, 2)
+                if linesp is not None or is_gibberish(text):
+                    cv2.imwrite("TempImages/" + str(diagram_count) + ".jpg", new_image)
+                    document_data_list.append(("TempImages/" + str(diagram_count) + ".jpg", "image", y, pseudo_text))
+                    diagram_count = diagram_count + 1
+                else:
+                    # large chunk that resembles diagram, but really is text
+                    document_data_list.append((text, "text", y, pseudo_text))
     return document_data_list
 
 
@@ -187,14 +245,21 @@ def is_gibberish(text):
 
     # Every line in the contour box
     for s in split:
-        # if contains_quesiton_number:
-        #     if there is a question number, it is definitely not gibberish. i.e we want it as a text, not image
-        #     is_definitely_not_gibberish = True
-
-            # some qn headers are auto recognized as gibberish, so we wanna make sure statements with qn numbers in them are definitely NOT gibberish as well so they are appended as text and not images
-        search_sentence = re.search(r'[?0-9]+[.,]+', s, re.I)
-        if search_sentence or "(a)" in s or "(b)" in s or "(c)" in s or "(d)" in s:
-            is_definitely_not_gibberish = True
+        if re.search(r'english', filename, re.I):
+            if "(1)" in s or "(2)" in s or "(3)" in s or "(4)" in s or "(a)" in s or "(b)" in s or "(c)" in s or "(d)" in s:
+                # if there is a answer number, it is definitely not gibberish. i.e we want it as a text, not image
+                is_definitely_not_gibberish = True
+        elif re.search(r'math', filename, re.I):
+            # some qn headers for non-english papers are auto recognized as gibberish, so we want to correct that
+            search_sentence = re.search(r'[?0-9]+[.,]+', s, re.I)
+            numberans_search = re.search(r'[\[\(\{][1-4a-b]+[]\)\}]|Ans]', s, re.I)
+            if search_sentence or numberans_search:
+                is_definitely_not_gibberish = True
+        else:
+            # definitely a science paper, where options (1)-(4) should not always be treated as not gibberish
+            search_sentence = re.search(r'[?0-9]+[.,]+', s, re.I)
+            if search_sentence or "(a)" in s or "(b)" in s or "(c)" in s or "(d)" in s:
+                is_definitely_not_gibberish = True
 
     gibberish_likelihood_percentage = classify(s)
     total_value = total_value + gibberish_likelihood_percentage
@@ -203,18 +268,29 @@ def is_gibberish(text):
         return False
 
     average_percentage = total_value / len(split)
-    if average_percentage > 45:
-        # likely to be gibberish
-        return True
+    if re.search(r'english', filename, re.I):
+        if average_percentage > 30:
+            # likely to be gibberish
+            return True
+        else:
+            return False
     else:
-        return False
+        if average_percentage > 45:
+            # likely to be gibberish
+            return True
+        else:
+            return False
 
 
 def write_data_to_document(document_data_list, document, filename, qn_coord):
     global qn_num
     global pg_num
     global global_df
-    
+    global current_ans_list
+    global found_ans_options
+    global file_attribute_list
+    global image_count
+
     # Sort data of text and images according to their y values, and add them to a word document
     document_data_list.sort(key=lambda tup: tup[2])
 
@@ -230,10 +306,55 @@ def write_data_to_document(document_data_list, document, filename, qn_coord):
         if qn_num < len(qn_coord) - 1:
             next_qn_tuple = qn_coord[qn_num + 1]
             # print((pg_num, y_coord, next_qn_tuple[0], next_qn_tuple[1]))
-            if pg_num > next_qn_tuple[0] or (pg_num == next_qn_tuple[0] and y_coord > next_qn_tuple[1]):
+            if pg_num > next_qn_tuple[0] or (pg_num == next_qn_tuple[0] and y_coord > (next_qn_tuple[1] - 5)):
                 qn_num = qn_num + 1
-                
-        # STEP 2: Add question to dataframe
+                current_ans_list = []
+                found_ans_options = False
+
+        # STEP 2: Find ans sections
+        regex = re.compile('[\[\(\|\{][0-9][\]\)\}\|]')
+
+        matches = regex.finditer(pseudo_text)
+        match_list = []
+        for match in matches:
+            match_list.append(match)
+
+        first_ans_pos = -1
+        for i in range(len(match_list)):
+            match = match_list[i]
+            lineno = pseudo_text.count('\n', 0, match.start())
+
+            if len(current_ans_list) <= 3:
+                startpos = match.regs[0][0]
+                endpos = match.regs[0][1]
+                if len(current_ans_list) == 0:
+                    first_ans_pos = startpos
+
+                if i == len(match_list) - 1:
+                    # Last match
+                    substr = pseudo_text[startpos:]
+                    current_ans_list.append(substr)
+                else:
+                    # Still have matches after
+                    nextstartpos = match_list[i + 1].regs[0][0]
+                    substr = pseudo_text[startpos:nextstartpos]
+                    current_ans_list.append(substr)
+            else:
+                break
+
+        ans_a = "" if len(current_ans_list) <= 0 else current_ans_list[0]
+        ans_b = "" if len(current_ans_list) <= 1 else current_ans_list[1]
+        ans_c = "" if len(current_ans_list) <= 2 else current_ans_list[2]
+        ans_d = "" if len(current_ans_list) <= 3 else current_ans_list[3]
+
+        # file_attribute_list -> [paper_level, paper_subject, paper_year, paper_school, paper_exam_type]
+        paper_level = file_attribute_list[0].upper()
+        paper_subject = file_attribute_list[1].upper()
+        paper_year = file_attribute_list[2]
+        paper_school = file_attribute_list[3]
+        paper_exam_type = file_attribute_list[4].upper()
+
+        # STEP 3: Add question to dataframe
         if typeof == "text":
             document.add_paragraph(item)
             illegal_qn_strings = ["chij", "mark", "instructions", "go on to the next page", "blank page", "question"]
@@ -241,19 +362,39 @@ def write_data_to_document(document_data_list, document, filename, qn_coord):
             contains_illegal_qn_string = any(ele in item.lower() for ele in illegal_qn_strings)
             if not contains_illegal_qn_string and item != "":
                 # print((pg_num, y_coord, qn_num, item))
-                # ['qn_num', 'pg_num', 'pdf_name', 'text', 'image_path']
+                # ['Level', 'Question', 'isMCQ', 'A', 'B', 'C', 'D', 'Subject', 'Year', 'School', 'Exam', 'Number', 'Image', 'Image File' ]
                 if qn_num not in global_df.index:
-                    global_df.loc[qn_num] = [qn_num, pg_num, filename, item, ""]
+                    global_df.loc[qn_num] = [paper_level, item, "", ans_a, ans_b, ans_c, ans_d, paper_subject,
+                                             paper_year, paper_school, paper_exam_type, qn_num, "No", ""]
                 else:
-                    global_df.loc[qn_num] = [qn_num, pg_num, filename, global_df.loc[qn_num][3] + item, global_df.loc[qn_num][4]]
-            
+                    if len(current_ans_list) != 0 and not found_ans_options:
+                        # If an answer option was found in this contour(So, remove the answer options from the question)
+                        item = item[:first_ans_pos]
+                        found_ans_options = True
+                    elif len(current_ans_list) != 0 and found_ans_options:
+                        # If an answer option was found in a contour before(Means no more text in the actual question)
+                        item = ""
+
+                    global_df.loc[qn_num, 'Question'] = global_df.loc[qn_num, 'Question'] + item
+                    global_df.loc[qn_num, 'A'] = ans_a
+                    global_df.loc[qn_num, 'B'] = ans_b
+                    global_df.loc[qn_num, 'C'] = ans_c
+                    global_df.loc[qn_num, 'D'] = ans_d
+
         elif typeof == "image":
             if qn_num not in global_df.index:
-                    global_df.loc[qn_num] = [qn_num, pg_num, filename, "", item]
+                global_df.loc[qn_num] = [paper_level, "", "", ans_a, ans_b, ans_c, ans_d, paper_subject, paper_year,
+                                         paper_school, paper_exam_type, qn_num, "Yes", item]
             else:
-                global_df.loc[qn_num] = [qn_num, pg_num, filename, global_df.loc[qn_num][3], global_df.loc[qn_num][4] + ";" + item]
+                global_df.loc[qn_num, 'A'] = ans_a
+                global_df.loc[qn_num, 'B'] = ans_b
+                global_df.loc[qn_num, 'C'] = ans_c
+                global_df.loc[qn_num, 'D'] = ans_d
+                global_df.loc[qn_num, 'Image'] = "Yes"
+                global_df.loc[qn_num, 'Image File'] = global_df.loc[qn_num, 'Image File'] + ";" + item
+
             document.add_picture(item, width=Inches(5))
-        
+            image_count += 1
 
 
 def generate_document(filename, documentdir, qn_coord):
@@ -271,12 +412,37 @@ def generate_document(filename, documentdir, qn_coord):
     ###### Step 2: Get the initial thresh and contours
     img = cv2.imread(image_name + ".jpg")
     height, width, channels = img.shape
+    # if math paper, remove the vertical lines on the right side of the page
+    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+    thresh = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)[1]
+    vertical_kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (1, 40))
+    remove_vertical = cv2.morphologyEx(thresh, cv2.MORPH_OPEN, vertical_kernel, iterations=2)
+    cnts = cv2.findContours(remove_vertical, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    cnts = cnts[0] if len(cnts) == 2 else cnts[1]
+    if re.search(r'math', filename, re.I):
+        for c in cnts:
+            x, y, w, h = cv2.boundingRect(c)
+            if x / width > 0.7 or x / width < 0.1:
+                cv2.drawContours(img, [c], -1, (255, 255, 255), 20)
+    else:
+        # eliminate unwanted horizontal lines at paper margins due to scanning
+        for c in cnts:
+            x, y, w, h = cv2.boundingRect(c)
+            if x / width > 0.9 or x / width < 0.1:
+                cv2.drawContours(img, [c], -1, (255, 255, 255), 20)
+
+    height, width, channels = img.shape
     thresh, cntrs, result, morph = get_thresh_and_contours(img)
 
     ###### Step 3: Merge contours that are close together
     # Modify the x and y tolerance to change how far it must be before it will merge!
-    x_tolerance = m.floor(0.18 * width) # previously 300px
-    y_tolerance = m.floor(0.009 * height) # previously 0.014964 #SX: 0.015
+    if re.search(r'english', filename, re.I):
+        x_tolerance = m.floor(0.18138 * width)  # previously 300px
+        y_tolerance = m.floor(0.014964 * height)  # previously 35px
+    else:
+        x_tolerance = m.floor(0.18 * width)  # previously 300px
+        y_tolerance = m.floor(0.009 * height)  # previously 0.014964 #SX: 0.015
+
     thresh, cntrs = merge_contours(thresh, cntrs, x_tolerance, y_tolerance)
 
     ###### Step 4: Draw the contours on the image
@@ -305,12 +471,13 @@ def generate_document(filename, documentdir, qn_coord):
     # cv2.imshow("MORPH", morph)
 
     ####### Step 6: Display results
-    ims=cv2.resize(result,(700,850))
+    ims = cv2.resize(result, (700, 850))
     cv2.imwrite("TempContours/" + str(pg_num) + ".jpg", ims)
     pg_num = pg_num + 1
     # cv2.imshow("RESULT", ims)
     # cv2.waitKey(0)
     # cv2.destroyAllWindows()
+
 
 # Copies all files from src directory to dest directory
 def copytree(src, dst, symlinks=False, ignore=None):
@@ -324,8 +491,9 @@ def copytree(src, dst, symlinks=False, ignore=None):
         else:
             if not os.path.exists(d) or os.stat(s).st_mtime - os.stat(d).st_mtime > 1:
                 shutil.copy2(s, d)
-                
-# Map the page number and y coordinates of each question     
+
+
+# Map the page number and y coordinates of each question
 def find_qn_coords(filenames_list):
     global total_pages
     qn_coord = []
@@ -351,28 +519,28 @@ def find_qn_coords(filenames_list):
 
         ###### Step 3: Merge contours that are close together
         # Modify the x and y tolerance to change how far it must be before it will merge!
-        x_tolerance = m.floor(0.02138*width) # previously 300px
-        y_tolerance = m.floor(0.024964*height) # previously 35px
+        x_tolerance = m.floor(0.02138 * width)  # previously 300px
+        y_tolerance = m.floor(0.024964 * height)  # previously 35px
         thresh, cntrs = merge_contours(thresh, cntrs, x_tolerance, y_tolerance)
-        
+
         sorted_cntr_tuples = []
         for c in cntrs:
             area = cv2.contourArea(c) / 10000
             x, y, w, h = cv2.boundingRect(c)
             cv2.rectangle(result, (x, y), (x + w, y + h), (0, 0, 255), 2)
 
-            if area < 0.1 and area > 0.01 and y/height < 0.855 and x/width < 0.25 and w/h < 2 and w/h > 0.5:
+            if area < 0.1 and area > 0.01 and y / height < 0.855 and x / width < 0.25 and w / h < 2 and w / h > 0.5:
                 new_image = img[y:y + h, x:x + w]
                 text = pytesseract.image_to_string(new_image, lang='eng', config='--psm 6')
                 if text != "":
                     # Check if pseudo_text contains numbers contained in any brackets
-                    #matches = re.search(r'[\[\(\|\{][0-9a-z][\]\)\}\|]', text, re.I)
+                    # matches = re.search(r'[\[\(\|\{][0-9a-z][\]\)\}\|]', text, re.I)
                     illegal_qn_strings = ["(", ")", "[", "]", "{", "}", "|", "NO"]
                     # Do not accept text as question if it contains any of these strings
                     contains_illegal_qn_string = any(ele in text.lower() for ele in illegal_qn_strings)
 
                     if not contains_illegal_qn_string:
-                        sorted_cntr_tuples.append((c, pg_num, y, w, h, x/width))
+                        sorted_cntr_tuples.append((c, pg_num, y, w, h, x / width))
 
         sorted_cntr_tuples.sort(key=lambda tup: tup[2])
         # Comment this out to visualise the processing of small contours under TempImages/small_[NAME].jpg
@@ -393,21 +561,93 @@ def find_qn_coords(filenames_list):
 
         cv2.imwrite("TempContours/" + str(pg_num) + ".jpg", result)
         pg_num = pg_num + 1
-    
+
     return qn_coord
-    
+
+
+def find_paper_attributes(paper_name):
+    paper_name = paper_name.lower()
+    paper_subject = ""
+    paper_level = ""
+    paper_exam_type = ""
+    paper_year = ""
+    paper_school = ""
+
+    if re.search(r'english', paper_name, re.I):
+        paper_subject = "english"
+    elif re.search(r'math', paper_name, re.I):
+        paper_subject = "math"
+    elif re.search(r'science', paper_name, re.I):
+        paper_subject = "science"
+
+    if re.search(r'p[0-9]', paper_name, re.I):
+        match = re.search(r'p[0-9]', paper_name, re.I)
+        startpos = match.regs[0][0]
+        endpos = match.regs[0][1]
+        paper_level = paper_name[startpos:endpos]
+
+    if re.search(r'ca1', paper_name, re.I):
+        paper_exam_type = "ca1"
+    elif re.search(r'ca2', paper_name, re.I):
+        paper_exam_type = "ca2"
+    elif re.search(r'sa1', paper_name, re.I):
+        paper_exam_type = "sa1"
+    elif re.search(r'sa2', paper_name, re.I):
+        paper_exam_type = "sa2"
+
+    if re.search(r'[0-9][0-9][0-9][0-9]', paper_name, re.I):
+        match = re.search(r'[0-9][0-9][0-9][0-9]', paper_name, re.I)
+        startpos = match.regs[0][0]
+        endpos = match.regs[0][1]
+        paper_year = paper_name[startpos:endpos]
+
+    paper_name_split = paper_name.split("_")
+    if len(paper_name_split) <= 1:
+        paper_name_split = paper_name.split("-")
+
+    illegal_paper_name_strings = [paper_subject, paper_level, paper_exam_type, paper_year]
+    for i in illegal_paper_name_strings:
+        if i == "":
+            illegal_paper_name_strings.remove(i)
+
+    for part in paper_name_split:
+        contains_illegal_paper_name_string = any(ele in part.lower() for ele in illegal_paper_name_strings)
+        if not contains_illegal_paper_name_string:
+            paper_school = paper_school + part + "_"
+
+    paper_school = paper_school[:-1]
+    return paper_level, paper_subject, paper_year, paper_school, paper_exam_type
+
+
+def acc_matrix(image_count, verifier, pdfname):
+    if any(verifier["Paper Name"].values == pdfname):
+        num_qns = int(verifier.loc[pdfname, "Questions"])
+        num_images = int(verifier.loc[pdfname, "Images"])
+        qn_acc = (qn_num/num_qns) * 100
+        img_acc = (image_count/num_images) * 100
+        return qn_acc, img_acc
+    else:
+        pass
 
 
 def main(pdfname):
     global total_pages
     global global_df
-
+    global file_attribute_list
     print(pdfname)
+
+    if not os.path.exists("TempImages"):
+        os.makedirs("TempImages")
+
+    if not os.path.exists("TempContours"):
+        os.makedirs("TempContours")
+
     paper_name = pdfname.replace(".pdf", "")
     pdf_path = "Sample Resources/" + paper_name + ".pdf"
     pages = convert_from_path(pdf_path)
     pg_cntr = 1
     filenames_list = []
+    file_attribute_list = find_paper_attributes(paper_name)
 
     sub_dir = str("images/" + pdf_path.split('/')[-1].replace('.pdf', '') + "/")
     if not os.path.exists(sub_dir):
@@ -426,6 +666,15 @@ def main(pdfname):
     for filename in filenames_list:
         generate_document(filename, "OutputDocuments", qn_coord)
 
+    df = pd.read_csv("Sample Resources/pdfverifier.csv")
+    verifier = df.set_index("Paper Name", drop=False)
+    qn_acc, img_acc = acc_matrix(image_count, verifier, pdfname)
+    print("\n" + "Accuracy of Question Numbers: " + str(qn_acc) + "%")
+    if img_acc > 100:
+        print("Accuracy of Images : " + str(img_acc) + "%")
+        print("There could be too much noise being recognized as images, consider improving the filter" + "\n")
+    else:
+        print("Accuracy of Images : " + str(img_acc) + "%" + "\n")
     global_df.to_csv("output.csv")
 
     # Copies all the output to a new folder under Output/PDF NAME
@@ -435,19 +684,31 @@ def main(pdfname):
     copytree(dirpath + "/images/" + paper_name, dirpath + "/Output/" + paper_name + "/images")
     shutil.copyfile(dirpath + "/output.csv", dirpath + "/Output/" + paper_name + "/output.csv")
 
+    global_df = pd.DataFrame(columns=['Level', 'Question', 'isMCQ', 'A', 'B', 'C', 'D', 'Subject', 'Year', 'School', 'Exam', 'Number', 'Image', 'Image File'])
+    shutil.rmtree(dirpath + "/TempContours")
+    shutil.rmtree(dirpath + "/TempImages")
+    shutil.rmtree(dirpath + "/images/")
+
 
 qn_num = 1
 pg_num = 1
 diagram_count = 1
 total_pages = -1
-global_df = pd.DataFrame(columns=['qn_num', 'pg_num', 'pdf_name', 'text', "img_path"])
-
-if not os.path.exists("TempImages"):
-    os.makedirs("TempImages")
-
-if not os.path.exists("TempContours"):
-    os.makedirs("TempContours")
+image_count = 0
+current_section = ""
+current_ans_list = []
+file_attribute_list = []
+found_ans_options = False
+global_df = pd.DataFrame(columns=['Level', 'Question', 'isMCQ', 'A', 'B', 'C', 'D', 'Subject', 'Year', 'School', 'Exam', 'Number', 'Image', 'Image File'])
 
 for filename in os.listdir("Sample Resources"):
-    if filename.endswith(".pdf"): 
+    if filename.endswith(".pdf"):
         main(filename)
+        qn_num = 1
+        pg_num = 1
+        diagram_count = 1
+        total_pages = -1
+        image_count = 0
+        current_section = ""
+        current_ans_list = []
+        found_ans_options = False
