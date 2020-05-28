@@ -156,7 +156,7 @@ def draw_contours(result, img, cntrs, image_name):
         detected_lines = cv2.morphologyEx(thresh_1, cv2.MORPH_OPEN, horizontal_kernel, iterations=2)
 
         cnts_line = cv2.findContours(detected_lines, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-        cnts_line = cnts_line[0] if len(cnts_line) == 2 else cnts[1]
+        cnts_line = cnts_line[0] if len(cnts_line) == 2 else cnts_line[1]
         # draw contours for blank line
         for c in cnts_line:
             # cv2.drawContours(image, [c], -1, (0,0,255), 3)
